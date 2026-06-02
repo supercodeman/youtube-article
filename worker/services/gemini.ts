@@ -1,14 +1,10 @@
-import { GoogleGenerativeAI, GenerateContentStreamResult } from '@google/generative-ai';
 import type { SSEChunk } from '../types';
 
+const API_KEY = 'sk-cp-tw2Fck7-PN2u6tBkEgEAPkQvhOI2cYhqDy6mDL25T13K8KRJU-1a5xl_aPGBWIWcN7OiIduI6AMN-jMqe05azd-h0N-39Iw37m0WkeeO0acMG3N5OdkOCGs';
+const BASE_URL = 'https://api.minimax.chat/v1';
+const MODEL = 'MiniMax M2.7';
+
 export class GeminiService {
-  private model;
-
-  constructor(apiKey: string) {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    this.model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
-  }
-
   buildPrompt(subtitles: string, requirements?: string): string {
     const req = requirements ? `\n\n【用户要求】\n${requirements}` : '';
     return `你是一个专业的视频内容分析师。请根据以下字幕内容，生成一篇结构清晰的中文文章。
@@ -29,21 +25,53 @@ ${req}
     requirements?: string
   ): AsyncGenerator<SSEChunk, void, unknown> {
     const prompt = this.buildPrompt(subtitles, requirements);
-    let result: GenerateContentStreamResult;
 
     try {
-      result = await this.model.generateContentStream({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      const response = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true
+        })
       });
-    } catch (e) {
-      throw new Error(`Gemini API error: ${e}`);
-    }
 
-    try {
-      for await (const chunk of result.stream) {
-        const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        if (text) {
-          yield { type: 'text', content: text };
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`MiniMax API error: ${response.status} ${error}`);
+      }
+
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                yield { type: 'text', content };
+              }
+            } catch (e) {
+              // Skip invalid JSON lines
+            }
+          }
         }
       }
     } catch (e) {
@@ -77,12 +105,26 @@ ${articleContent.slice(0, 2000)}...
 }`;
 
     try {
-      const result = await this.model.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      const response = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'user', content: prompt }]
+        })
       });
 
-      const text = result.response.text();
-      // 尝试解析 JSON
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`MiniMax API error: ${response.status} ${error}`);
+      }
+
+      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const text = data.choices?.[0]?.message?.content || '';
+
       const jsonMatch = text.match(/\{[\s\S]*?"who"[\s\S]*?\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);

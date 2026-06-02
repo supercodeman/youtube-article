@@ -376,7 +376,7 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      const gemini = new GeminiService(env.GEMINI_API_KEY);
+      const gemini = new GeminiService();
       const parserState = createParserState();
       let fullText = '';
 
@@ -455,7 +455,7 @@ async function handleChapterSummary(request: Request, env: Env): Promise<Respons
     return json(chapter.summary5w1h);
   }
 
-  const gemini = new GeminiService(env.GEMINI_API_KEY);
+  const gemini = new GeminiService();
   const chapterContent = extractChapterContent(session.article.fullText, chapter, session.article.chapters);
   const summary = await gemini.generateSummary(
     session.article.fullText,
