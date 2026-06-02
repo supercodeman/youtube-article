@@ -2,7 +2,7 @@ import type { SSEChunk } from '../types';
 
 const API_KEY = 'sk-cp-tw2Fck7-PN2u6tBkEgEAPkQvhOI2cYhqDy6mDL25T13K8KRJU-1a5xl_aPGBWIWcN7OiIduI6AMN-jMqe05azd-h0N-39Iw37m0WkeeO0acMG3N5OdkOCGs';
 const BASE_URL = 'https://api.minimax.chat/v1';
-const MODEL = 'MiniMax M2.7';
+const MODEL = 'MiniMax-M2.7';
 
 export class GeminiService {
   buildPrompt(subtitles: string, requirements?: string): string {
