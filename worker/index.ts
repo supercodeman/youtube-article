@@ -10,6 +10,275 @@ import {
   extractVideoId
 } from './utils/validator';
 
+const HTML_CONTENT = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube 字幕转文章</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #667eea; margin-bottom: 2rem; }
+    .card {
+      background: #16213e;
+      border: 1px solid #1f3460;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    label { display: block; color: #a78bfa; margin-bottom: 0.5rem; font-weight: 500; }
+    input, textarea {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0f1629;
+      border: 1px solid #1f3460;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 1rem;
+    }
+    input:focus, textarea:focus { outline: none; border-color: #667eea; }
+    textarea { resize: vertical; min-height: 80px; }
+    button {
+      padding: 0.75rem 1.5rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+    .progress {
+      height: 4px;
+      background: #0f1629;
+      border-radius: 2px;
+      margin: 1rem 0;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      width: 0%;
+      transition: width 0.3s;
+    }
+    .status { color: #6b7280; font-size: 0.9rem; margin-top: 0.5rem; }
+    .article { font-size: 1.05rem; line-height: 1.8; }
+    .chapter { margin: 2rem 0; }
+    .chapter-title {
+      color: #667eea;
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #1f3460;
+    }
+    .chapter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .text-content { color: #d1d5db; }
+    .summary-box {
+      background: #0f1629;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+      display: none;
+    }
+    .summary-box.visible { display: block; }
+    .summary-item { margin: 0.5rem 0; }
+    .summary-label { color: #667eea; font-weight: 500; }
+    .error { color: #fca5a5; padding: 1rem; background: #1f1460; border-radius: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>YouTube 字幕转文章</h1>
+
+    <div class="card">
+      <label for="videoUrl">YouTube 视频链接</label>
+      <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=xRh2sVcNXQ8">
+    </div>
+
+    <div class="card">
+      <label for="requirements">生成要求（可选）</label>
+      <textarea id="requirements" placeholder="例如：用轻松的语气，面向程序员"></textarea>
+    </div>
+
+    <button id="generateBtn">生成文章</button>
+
+    <div id="progressSection" class="card hidden">
+      <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="status" id="statusText">正在获取字幕...</div>
+    </div>
+
+    <div id="errorSection" class="error hidden"></div>
+
+    <div id="articleSection" class="card hidden">
+      <div class="article" id="articleContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+
+    let sessionId = null;
+
+    document.getElementById('generateBtn').addEventListener('click', startGeneration);
+
+    async function startGeneration() {
+      const videoUrl = document.getElementById('videoUrl').value.trim();
+      const requirements = document.getElementById('requirements').value.trim();
+
+      if (!videoUrl) {
+        showError('请输入 YouTube 视频链接');
+        return;
+      }
+
+      sessionId = null;
+      document.getElementById('errorSection').classList.add('hidden');
+      document.getElementById('articleSection').classList.add('hidden');
+      document.getElementById('progressSection').classList.remove('hidden');
+      document.getElementById('articleContent').innerHTML = '';
+      updateProgress(0, '正在连接...');
+      document.getElementById('generateBtn').disabled = true;
+
+      try {
+        const res = await fetch(\`\${API_BASE}/api/generate\`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl, requirements })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.message || '启动生成失败');
+        }
+
+        const data = await res.json();
+        sessionId = data.sessionId;
+        updateProgress(10, '正在获取字幕...');
+
+        await connectSSE();
+      } catch (e) {
+        showError(e.message);
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('generateBtn').disabled = false;
+      }
+    }
+
+    async function connectSSE() {
+      const articleContent = document.getElementById('articleContent');
+      const eventSource = new EventSource(\`\${API_BASE}/api/stream/\${sessionId}\`);
+
+      eventSource.addEventListener('chapter', (event) => {
+        const data = JSON.parse(event.data);
+        const chapterEl = document.createElement('div');
+        chapterEl.className = 'chapter';
+        chapterEl.dataset.index = data.index;
+        chapterEl.innerHTML = \`
+          <div class="chapter-header">
+            <h2 class="chapter-title">[CHAPTER \${data.index + 1}: \${data.title}]</h2>
+            <button class="btn-small" onclick="loadSummary(\${data.index})">[5W1H]</button>
+          </div>
+          <div class="text-content"></div>
+          <div class="summary-box"></div>
+        \`;
+        articleContent.appendChild(chapterEl);
+        updateProgress(50, '正在生成内容...');
+      });
+
+      eventSource.addEventListener('text', (event) => {
+        const data = JSON.parse(event.data);
+        const chapters = articleContent.querySelectorAll('.chapter');
+        const lastChapter = chapters[chapters.length - 1];
+        if (lastChapter) {
+          const textContent = lastChapter.querySelector('.text-content');
+          if (textContent) textContent.textContent += data.content;
+        }
+        updateProgress(70, '正在生成内容...');
+      });
+
+      eventSource.addEventListener('done', (event) => {
+        eventSource.close();
+        updateProgress(100, '生成完成');
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('generateBtn').disabled = false;
+      });
+
+      eventSource.onerror = (e) => {
+        showError('连接中断，请重试');
+        eventSource.close();
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('generateBtn').disabled = false;
+      };
+    }
+
+    async function loadSummary(chapterIndex) {
+      const chapters = document.querySelectorAll('.chapter');
+      const chapterEl = chapters[chapterIndex];
+      if (!chapterEl) return;
+
+      const summaryBox = chapterEl.querySelector('.summary-box');
+      if (summaryBox.classList.contains('visible')) {
+        summaryBox.classList.remove('visible');
+        return;
+      }
+
+      summaryBox.classList.add('visible');
+
+      const whoEl = summaryBox.querySelector('.summary-who');
+      if (whoEl && whoEl.textContent) return;
+
+      summaryBox.innerHTML = '<div class="status">正在加载总结...</div>';
+
+      try {
+        const res = await fetch(\`\${API_BASE}/api/chapter/\${sessionId}/\${chapterIndex}/summary\`);
+        if (!res.ok) throw new Error('加载失败');
+
+        const data = await res.json();
+        summaryBox.innerHTML = \`
+          <div class="summary-item"><span class="summary-label">Who:</span> <span class="summary-who">\${data.who}</span></div>
+          <div class="summary-item"><span class="summary-label">What:</span> <span class="summary-what">\${data.what}</span></div>
+          <div class="summary-item"><span class="summary-label">When:</span> <span class="summary-when">\${data.when}</span></div>
+          <div class="summary-item"><span class="summary-label">Where:</span> <span class="summary-where">\${data.where}</span></div>
+          <div class="summary-item"><span class="summary-label">Why:</span> <span class="summary-why">\${data.why}</span></div>
+          <div class="summary-item"><span class="summary-label">How:</span> <span class="summary-how">\${data.how}</span></div>
+        \`;
+      } catch (e) {
+        summaryBox.innerHTML = \`<div class="error">\${e.message}</div>\`;
+      }
+    }
+
+    function updateProgress(percent, text) {
+      document.getElementById('progressBar').style.width = percent + '%';
+      document.getElementById('statusText').textContent = text;
+      document.getElementById('articleSection').classList.remove('hidden');
+    }
+
+    function showError(message) {
+      const errorEl = document.getElementById('errorSection');
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>`;
+
 interface Env {
   GEMINI_API_KEY: string;
   KV_BINDING: KVNamespace;
@@ -47,8 +316,11 @@ export default {
       if (path.startsWith('/api/session/') && request.method === 'DELETE') {
         return await handleDeleteSession(request, env);
       }
+      // 返回内嵌的 HTML
       if (path === '/' || path === '/index.html') {
-        return new Response(null, { status: 404 });
+        return new Response(HTML_CONTENT, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
       }
       return new Response('Not Found', { status: 404 });
     } catch (e) {
