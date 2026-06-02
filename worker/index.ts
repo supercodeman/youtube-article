@@ -12,7 +12,7 @@ import {
 
 interface Env {
   GEMINI_API_KEY: string;
-  ARTICLE_KV: KVNamespace;
+  KV_BINDING: KVNamespace;
 }
 
 export default {
@@ -83,7 +83,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
     updatedAt: Date.now()
   };
 
-  const storage = new StorageService(env.ARTICLE_KV);
+  const storage = new StorageService(env.KV_BINDING);
   await storage.saveSession(session);
 
   return json({ sessionId, status: 'generating' });
@@ -91,7 +91,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
 
 async function handleStream(request: Request, env: Env): Promise<Response> {
   const sessionId = extractSessionId(request.url);
-  const storage = new StorageService(env.ARTICLE_KV);
+  const storage = new StorageService(env.KV_BINDING);
   const session = await storage.getSession(sessionId);
 
   if (!session) {
@@ -170,7 +170,7 @@ async function handleChapterSummary(request: Request, env: Env): Promise<Respons
     return jsonError('Invalid parameters', 'INVALID_PARAMS');
   }
 
-  const storage = new StorageService(env.ARTICLE_KV);
+  const storage = new StorageService(env.KV_BINDING);
   const session = await storage.getSession(sessionId);
 
   if (!session) {
@@ -200,7 +200,7 @@ async function handleChapterSummary(request: Request, env: Env): Promise<Respons
 
 async function handleGetSession(request: Request, env: Env): Promise<Response> {
   const sessionId = extractSessionId(request.url);
-  const storage = new StorageService(env.ARTICLE_KV);
+  const storage = new StorageService(env.KV_BINDING);
   const session = await storage.getSession(sessionId);
 
   if (!session) {
@@ -212,7 +212,7 @@ async function handleGetSession(request: Request, env: Env): Promise<Response> {
 
 async function handleDeleteSession(request: Request, env: Env): Promise<Response> {
   const sessionId = extractSessionId(request.url);
-  const storage = new StorageService(env.ARTICLE_KV);
+  const storage = new StorageService(env.KV_BINDING);
   await storage.deleteSession(sessionId);
   return json({ success: true });
 }

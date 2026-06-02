@@ -6,5 +6,5 @@ compatibility_date = "2024-06-01"
 GEMINI_API_KEY = ""  # TODO: 填入你的 Gemini API Key
 
 [[kv_namespaces]]
-binding = "ARTICLE_KV"
-id = ""  # TODO: 填入你的 KV namespace ID
+binding = "KV_BINDING"
+id = "31186bc1a15b45349deb19e96a9d2fa7"
