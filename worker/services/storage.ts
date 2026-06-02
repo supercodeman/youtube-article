@@ -1,4 +1,4 @@
-import type { Session, Article, Chapter, FiveW1H } from '../types';
+import type { Session, Article, Chapter, FiveW1H, LogEntry } from '../types';
 
 const SESSION_PREFIX = 'session:';
 const SESSION_TTL = 86400; // 24小时
@@ -63,5 +63,16 @@ export class StorageService {
   async deleteSession(sessionId: string): Promise<void> {
     const key = `${SESSION_PREFIX}${sessionId}`;
     await this.kv.delete(key);
+  }
+
+  async addLog(sessionId: string, log: LogEntry): Promise<void> {
+    const session = await this.getSession(sessionId);
+    if (!session) return;
+    session.logs.push(log);
+    if (session.logs.length > 100) {
+      session.logs = session.logs.slice(-100);
+    }
+    session.updatedAt = Date.now();
+    await this.saveSession(session);
   }
 }

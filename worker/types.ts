@@ -1,11 +1,19 @@
+export interface LogEntry {
+  timestamp: number;
+  level: 'INFO' | 'SUCCESS' | 'ERROR';
+  message: string;
+}
+
 export interface Session {
   id: string;
   videoUrl: string;
   videoId: string;
   subtitles: string;
+  subtitleSource: 'api' | 'fallback' | 'manual';
   userRequirements: string;
   article: Article;
   status: SessionStatus;
+  logs: LogEntry[];
   createdAt: number;
   updatedAt: number;
 }
@@ -44,11 +52,13 @@ export interface GenerateResponse {
 }
 
 export interface SSEChunk {
-  type: 'chapter' | 'text' | 'done' | 'error';
+  type: 'chapter' | 'text' | 'done' | 'error' | 'subtitle';
   index?: number;
   title?: string;
   content?: string;
   chapters?: Chapter[];
+  source?: 'api' | 'fallback' | 'manual';
+  charCount?: number;
 }
 
 export interface ErrorResponse {

@@ -1,5 +1,5 @@
-import type { Session, SSEChunk, GenerateRequest, ErrorResponse } from './types';
-import { SubtitleService } from './services/subtitle';
+import type { Session, LogEntry, SSEChunk, GenerateRequest, ErrorResponse } from './types';
+import { SubtitleService, ProxyConfig, FALLBACK_SUBTITLES } from './services/subtitle';
 import { GeminiService } from './services/gemini';
 import { StorageService } from './services/storage';
 import { parseChunk, createParserState } from './utils/parser';
@@ -90,7 +90,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
       align-items: center;
       margin-bottom: 1rem;
     }
-    .text-content { color: #d1d5db; }
+    .text-content { color: #d1d5db; white-space: pre-wrap; }
     .summary-box {
       background: #0f1629;
       border-radius: 8px;
@@ -103,10 +103,77 @@ const HTML_CONTENT = `<!DOCTYPE html>
     .summary-label { color: #667eea; font-weight: 500; }
     .error { color: #fca5a5; padding: 1rem; background: #1f1460; border-radius: 8px; }
     .hidden { display: none; }
+
+    /* Log Panel */
+    .log-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #0f1629;
+      border-top: 2px solid #1f3460;
+      max-height: 40vh;
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+    }
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: #16213e;
+      cursor: pointer;
+      user-select: none;
+    }
+    .log-header:hover { background: #1a2744; }
+    .log-title { color: #667eea; font-weight: 600; }
+    .log-toggle { color: #a78bfa; font-size: 0.9rem; }
+    .log-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 1rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    .log-entry { margin: 0.25rem 0; display: flex; gap: 0.5rem; }
+    .log-time { color: #6b7280; min-width: 60px; }
+    .log-level { min-width: 50px; font-weight: 600; }
+    .log-level.INFO { color: #60a5fa; }
+    .log-level.SUCCESS { color: #34d399; }
+    .log-level.ERROR { color: #f87171; }
+    .log-message { color: #e0e0e0; }
+    .log-collapsed .log-content { display: none; }
+
+    /* Header actions */
+    .header-actions {
+      position: fixed;
+      top: 1rem;
+      right: 2rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .header-btn {
+      padding: 0.5rem 1rem;
+      background: #16213e;
+      border: 1px solid #1f3460;
+      border-radius: 8px;
+      color: #a78bfa;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .header-btn:hover { border-color: #667eea; }
+    .header-btn.active { background: #667eea; color: white; border-color: #667eea; }
+    .main-content { padding-bottom: 50px; }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="header-actions">
+    <button id="toggleLogBtn" class="header-btn">[日志]</button>
+  </div>
+
+  <div class="container main-content">
     <h1>YouTube 字幕转文章</h1>
 
     <div class="card">
@@ -133,10 +200,71 @@ const HTML_CONTENT = `<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- Log Panel -->
+  <div id="logPanel" class="log-panel log-collapsed">
+    <div class="log-header" id="logHeader">
+      <span class="log-title">▼ 操作日志</span>
+      <span class="log-toggle">[收起]</span>
+    </div>
+    <div class="log-content" id="logContent">
+      <div class="log-entry">
+        <span class="log-time">--:--</span>
+        <span class="log-level INFO">INFO</span>
+        <span class="log-message">等待用户操作...</span>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '';
 
     let sessionId = null;
+    let logVisible = false;
+
+    // Log panel toggle
+    const logPanel = document.getElementById('logPanel');
+    const logHeader = document.getElementById('logHeader');
+    const logContent = document.getElementById('logContent');
+    const toggleLogBtn = document.getElementById('toggleLogBtn');
+
+    function toggleLogPanel() {
+      logVisible = !logVisible;
+      logPanel.classList.toggle('log-collapsed', !logVisible);
+      toggleLogBtn.classList.toggle('active', logVisible);
+      const title = logPanel.querySelector('.log-title');
+      const toggle = logPanel.querySelector('.log-toggle');
+      if (title) title.textContent = logVisible ? '▲ 操作日志' : '▼ 操作日志';
+      if (toggle) toggle.textContent = logVisible ? '[收起]' : '[展开]';
+    }
+
+    logHeader.addEventListener('click', toggleLogPanel);
+    toggleLogBtn.addEventListener('click', toggleLogPanel);
+
+    function addLog(level, message) {
+      const now = new Date();
+      const time = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = \`
+        <span class="log-time">\${time}</span>
+        <span class="log-level \${level}">\${level}</span>
+        <span class="log-message">\${escapeHtml(message)}</span>
+      \`;
+
+      logContent.appendChild(entry);
+
+      // Auto-scroll to bottom
+      if (logVisible) {
+        logContent.scrollTop = logContent.scrollHeight;
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
 
     document.getElementById('generateBtn').addEventListener('click', startGeneration);
 
@@ -157,7 +285,11 @@ const HTML_CONTENT = `<!DOCTYPE html>
       updateProgress(0, '正在连接...');
       document.getElementById('generateBtn').disabled = true;
 
+      addLog('INFO', '开始生成文章...');
+      addLog('INFO', '视频URL: ' + videoUrl);
+
       try {
+        addLog('INFO', '正在创建 Session...');
         const res = await fetch(\`\${API_BASE}/api/generate\`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -171,10 +303,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         const data = await res.json();
         sessionId = data.sessionId;
+        addLog('SUCCESS', 'Session 创建成功: ' + sessionId);
         updateProgress(10, '正在获取字幕...');
+        addLog('INFO', '开始获取字幕...');
 
         await connectSSE();
       } catch (e) {
+        addLog('ERROR', '生成失败: ' + e.message);
         showError(e.message);
         document.getElementById('progressSection').classList.add('hidden');
         document.getElementById('generateBtn').disabled = false;
@@ -187,6 +322,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
       eventSource.addEventListener('chapter', (event) => {
         const data = JSON.parse(event.data);
+        addLog('INFO', '[CHAPTER ' + (data.index + 1) + '] 开始: ' + data.title);
+
         const chapterEl = document.createElement('div');
         chapterEl.className = 'chapter';
         chapterEl.dataset.index = data.index;
@@ -213,18 +350,30 @@ const HTML_CONTENT = `<!DOCTYPE html>
         updateProgress(70, '正在生成内容...');
       });
 
+      eventSource.addEventListener('subtitle', (event) => {
+        const data = JSON.parse(event.data);
+        addLog('SUCCESS', '字幕获取完成 (' + data.source + '): ' + data.charCount + ' 字符');
+      });
+
       eventSource.addEventListener('done', (event) => {
         isDone = true;
         eventSource.close();
         updateProgress(100, '生成完成');
         document.getElementById('progressSection').classList.add('hidden');
         document.getElementById('generateBtn').disabled = false;
+        addLog('SUCCESS', '文章生成完成');
+      });
+
+      eventSource.addEventListener('error', (event) => {
+        const data = JSON.parse(event.data);
+        addLog('ERROR', '流式错误: ' + data.content);
       });
 
       let isDone = false;
       eventSource.onerror = (e) => {
         if (isDone) return;
         isDone = true;
+        addLog('ERROR', 'SSE 连接中断');
         showError('连接中断，请重试');
         eventSource.close();
         document.getElementById('progressSection').classList.add('hidden');
@@ -233,6 +382,8 @@ const HTML_CONTENT = `<!DOCTYPE html>
     }
 
     async function loadSummary(chapterIndex) {
+      addLog('INFO', '请求章节 ' + (chapterIndex + 1) + ' 的 5W1H 总结...');
+
       const chapters = document.querySelectorAll('.chapter');
       const chapterEl = chapters[chapterIndex];
       if (!chapterEl) return;
@@ -246,9 +397,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
       summaryBox.classList.add('visible');
 
       const whoEl = summaryBox.querySelector('.summary-who');
-      if (whoEl && whoEl.textContent) return;
+      if (whoEl && whoEl.textContent) {
+        addLog('INFO', '章节 ' + (chapterIndex + 1) + ' 总结已缓存');
+        return;
+      }
 
       summaryBox.innerHTML = '<div class="status">正在加载总结...</div>';
+      addLog('INFO', '正在生成 5W1H 总结...');
 
       try {
         const res = await fetch(\`\${API_BASE}/api/chapter/\${sessionId}/\${chapterIndex}/summary\`);
@@ -256,15 +411,17 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
         const data = await res.json();
         summaryBox.innerHTML = \`
-          <div class="summary-item"><span class="summary-label">Who:</span> <span class="summary-who">\${data.who}</span></div>
-          <div class="summary-item"><span class="summary-label">What:</span> <span class="summary-what">\${data.what}</span></div>
-          <div class="summary-item"><span class="summary-label">When:</span> <span class="summary-when">\${data.when}</span></div>
-          <div class="summary-item"><span class="summary-label">Where:</span> <span class="summary-where">\${data.where}</span></div>
-          <div class="summary-item"><span class="summary-label">Why:</span> <span class="summary-why">\${data.why}</span></div>
-          <div class="summary-item"><span class="summary-label">How:</span> <span class="summary-how">\${data.how}</span></div>
+          <div class="summary-item"><span class="summary-label">Who:</span> <span class="summary-who">\${escapeHtml(data.who)}</span></div>
+          <div class="summary-item"><span class="summary-label">What:</span> <span class="summary-what">\${escapeHtml(data.what)}</span></div>
+          <div class="summary-item"><span class="summary-label">When:</span> <span class="summary-when">\${escapeHtml(data.when)}</span></div>
+          <div class="summary-item"><span class="summary-label">Where:</span> <span class="summary-where">\${escapeHtml(data.where)}</span></div>
+          <div class="summary-item"><span class="summary-label">Why:</span> <span class="summary-why">\${escapeHtml(data.why)}</span></div>
+          <div class="summary-item"><span class="summary-label">How:</span> <span class="summary-how">\${escapeHtml(data.how)}</span></div>
         \`;
+        addLog('SUCCESS', '章节 ' + (chapterIndex + 1) + ' 5W1H 总结生成完成');
       } catch (e) {
         summaryBox.innerHTML = \`<div class="error">\${e.message}</div>\`;
+        addLog('ERROR', '5W1H 总结加载失败: ' + e.message);
       }
     }
 
@@ -286,6 +443,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
 interface Env {
   MINIMAX_API_KEY: string;
   KV_BINDING: KVNamespace;
+  PROXY_HOST?: string;
+  PROXY_PORT?: string;
+  PROXY_USERNAME?: string;
+  PROXY_PASSWORD?: string;
 }
 
 export default {
@@ -293,7 +454,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // CORS 预检
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
@@ -320,7 +480,6 @@ export default {
       if (path.startsWith('/api/session/') && request.method === 'DELETE') {
         return await handleDeleteSession(request, env);
       }
-      // 返回内嵌的 HTML
       if (path === '/' || path === '/index.html') {
         return new Response(HTML_CONTENT, {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -333,15 +492,24 @@ export default {
   }
 };
 
+function createLog(level: 'INFO' | 'SUCCESS' | 'ERROR', message: string, createdAt: number): LogEntry {
+  return { timestamp: Date.now() - createdAt, level, message };
+}
+
 async function handleGenerate(request: Request, env: Env): Promise<Response> {
   const body = await request.json() as GenerateRequest;
+  const createdAt = Date.now();
+  const logs: LogEntry[] = [createLog('INFO', '开始处理请求', createdAt)];
 
   if (!isValidYouTubeUrl(body.videoUrl)) {
+    logs.push(createLog('ERROR', '无效的 YouTube URL', createdAt));
     return jsonError('Invalid YouTube URL', 'INVALID_URL');
   }
 
   const videoId = extractVideoId(body.videoUrl);
   const requirements = sanitizeRequirements(body.requirements);
+
+  logs.push(createLog('INFO', `解析视频 ID: ${videoId}`, createdAt));
 
   const sessionId = crypto.randomUUID();
   const session: Session = {
@@ -349,21 +517,26 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
     videoUrl: body.videoUrl,
     videoId,
     subtitles: '',
+    subtitleSource: 'fallback',
     userRequirements: requirements,
     article: { fullText: '', chapters: [] },
     status: 'idle',
-    createdAt: Date.now(),
+    logs,
+    createdAt,
     updatedAt: Date.now()
   };
 
   const storage = new StorageService(env.KV_BINDING);
   await storage.saveSession(session);
 
-  return json({ sessionId, status: 'generating' });
+  logs.push(createLog('SUCCESS', `Session 创建成功: ${sessionId}`, createdAt));
+
+  return json({ sessionId, status: 'generating', logs });
 }
 
 async function handleStream(request: Request, env: Env): Promise<Response> {
   const sessionId = extractSessionId(request.url);
+  const createdAt = Date.now();
   const storage = new StorageService(env.KV_BINDING);
   const session = await storage.getSession(sessionId);
 
@@ -371,11 +544,36 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
     return jsonError('Session not found', 'SESSION_NOT_FOUND');
   }
 
+  // Add log helper
+  const addLog = (level: 'INFO' | 'SUCCESS' | 'ERROR', message: string) => {
+    session.logs.push(createLog(level, message, createdAt));
+    if (session.logs.length > 100) {
+      session.logs = session.logs.slice(-100);
+    }
+  };
+
   await storage.updateStatus(sessionId, 'generating');
 
-  const subtitleService = new SubtitleService(session.videoId);
-  const { subtitles } = await subtitleService.fetchSubtitles();
+  // Build proxy config if available
+  let proxyConfig: ProxyConfig | undefined;
+  if (env.PROXY_HOST) {
+    proxyConfig = {
+      host: env.PROXY_HOST,
+      port: parseInt(env.PROXY_PORT || '80', 10),
+      username: env.PROXY_USERNAME,
+      password: env.PROXY_PASSWORD
+    };
+    addLog('INFO', `使用代理配置: ${proxyConfig.host}:${proxyConfig.port}`);
+  }
+
+  const subtitleService = new SubtitleService(session.videoId, proxyConfig);
+  addLog('INFO', '开始获取字幕...');
+
+  const { subtitles, source } = await subtitleService.fetchSubtitles();
   session.subtitles = subtitles;
+  session.subtitleSource = source;
+
+  addLog(source === 'api' ? 'SUCCESS' : 'INFO', `字幕获取完成 (来源: ${source}): ${subtitles.length} 字符`);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -385,10 +583,15 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
       let fullText = '';
 
       const send = (data: SSEChunk) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        controller.enqueue(encoder.encode(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`));
       };
 
+      // Send subtitle info to frontend
+      send({ type: 'subtitle', source, charCount: subtitles.length } as SSEChunk);
+
       try {
+        addLog('INFO', '开始生成文章...');
+
         for await (const chunk of gemini.generateStream(subtitles, session.userRequirements)) {
           if (chunk.type === 'text' && chunk.content) {
             const { events } = parseChunk(chunk.content, parserState);
@@ -411,13 +614,18 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 
         session.article.fullText = fullText;
         session.status = 'done';
+        session.logs = session.logs;
         await storage.saveSession(session);
         send({ type: 'done', chapters: session.article.chapters });
 
+        addLog('SUCCESS', '文章生成完成');
+
       } catch (e) {
         session.status = 'error';
+        session.logs = session.logs;
         await storage.saveSession(session);
         send({ type: 'error', content: (e as Error).message } as SSEChunk);
+        addLog('ERROR', `生成失败: ${(e as Error).message}`);
       } finally {
         controller.close();
       }

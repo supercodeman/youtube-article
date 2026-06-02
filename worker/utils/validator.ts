@@ -20,7 +20,3 @@ export function extractVideoId(url: string): string {
   if (!match) throw new Error('Invalid YouTube URL');
   return match[1];
 }
-
-export function isValidSessionStatus(status: string): status is 'idle' | 'generating' | 'done' | 'error' {
-  return ['idle', 'generating', 'done', 'error'].includes(status);
-}
