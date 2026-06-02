@@ -667,16 +667,20 @@ async function handleChapterSummary(request: Request, env: Env): Promise<Respons
     return json(chapter.summary5w1h);
   }
 
-  const gemini = new GeminiService(env.MINIMAX_API_KEY);
-  const chapterContent = extractChapterContent(session.article.fullText, chapter, session.article.chapters);
-  const summary = await gemini.generateSummary(
-    session.article.fullText,
-    chapter.title,
-    chapterContent
-  );
+  try {
+    const gemini = new GeminiService(env.MINIMAX_API_KEY);
+    const chapterContent = extractChapterContent(session.article.fullText, chapter, session.article.chapters);
+    const summary = await gemini.generateSummary(
+      session.article.fullText,
+      chapter.title,
+      chapterContent
+    );
 
-  await storage.save5w1h(sessionId, chapterIndex, summary);
-  return json(summary);
+    await storage.save5w1h(sessionId, chapterIndex, summary);
+    return json(summary);
+  } catch (e) {
+    return jsonError(`5W1H 生成失败: ${(e as Error).message}`, 'SUMMARY_ERROR');
+  }
 }
 
 async function handleGetSession(request: Request, env: Env): Promise<Response> {
