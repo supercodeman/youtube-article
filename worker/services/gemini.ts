@@ -124,17 +124,21 @@ ${articleContent.slice(0, 2000)}...
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`MiniMax API error: ${response.status} ${error}`);
+        throw new Error(`MiniMax API error: ${response.status} - ${error.slice(0, 200)}`);
       }
 
       const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
       const text = data.choices?.[0]?.message?.content || '';
 
+      if (!text) {
+        throw new Error('Empty response from MiniMax API');
+      }
+
       const jsonMatch = text.match(/\{[\s\S]*?"who"[\s\S]*?\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
-      throw new Error('Failed to parse 5W1H response');
+      throw new Error(`Failed to parse 5W1H response: ${text.slice(0, 100)}`);
     } catch (e) {
       throw new Error(`Summary generation error: ${e}`);
     }
