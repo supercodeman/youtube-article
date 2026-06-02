@@ -214,13 +214,17 @@ const HTML_CONTENT = `<!DOCTYPE html>
       });
 
       eventSource.addEventListener('done', (event) => {
+        isDone = true;
         eventSource.close();
         updateProgress(100, '生成完成');
         document.getElementById('progressSection').classList.add('hidden');
         document.getElementById('generateBtn').disabled = false;
       });
 
+      let isDone = false;
       eventSource.onerror = (e) => {
+        if (isDone) return;
+        isDone = true;
         showError('连接中断，请重试');
         eventSource.close();
         document.getElementById('progressSection').classList.add('hidden');
