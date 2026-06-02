@@ -2,9 +2,6 @@ name = "youtube-article"
 main = "worker/index.ts"
 compatibility_date = "2024-06-01"
 
-[vars]
-GEMINI_API_KEY = ""
-
 [[kv_namespaces]]
 binding = "KV_BINDING"
 id = "31186bc1a15b45349deb19e96a9d2fa7"
