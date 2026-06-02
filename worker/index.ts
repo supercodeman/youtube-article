@@ -48,10 +48,7 @@ export default {
         return await handleDeleteSession(request, env);
       }
       if (path === '/' || path === '/index.html') {
-        const html = await fetch(new Request('public/index.html')).then(r => r.text());
-        return new Response(html, {
-          headers: { 'Content-Type': 'text/html; charset=utf-8' }
-        });
+        return new Response(null, { status: 404 });
       }
       return new Response('Not Found', { status: 404 });
     } catch (e) {
