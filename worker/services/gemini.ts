@@ -1,10 +1,15 @@
 import type { SSEChunk } from '../types';
 
-const API_KEY = 'sk-cp-tw2Fck7-PN2u6tBkEgEAPkQvhOI2cYhqDy6mDL25T13K8KRJU-1a5xl_aPGBWIWcN7OiIduI6AMN-jMqe05azd-h0N-39Iw37m0WkeeO0acMG3N5OdkOCGs';
 const BASE_URL = 'https://api.minimax.chat/v1';
 const MODEL = 'MiniMax-M2.7';
 
 export class GeminiService {
+  private apiKey: string;
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
   buildPrompt(subtitles: string, requirements?: string): string {
     const req = requirements ? `\n\n【用户要求】\n${requirements}` : '';
     return `你是一个专业的视频内容分析师。请根据以下字幕内容，生成一篇结构清晰的中文文章。
@@ -31,7 +36,7 @@ ${req}
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
           model: MODEL,
@@ -109,7 +114,7 @@ ${articleContent.slice(0, 2000)}...
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`
+          'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
           model: MODEL,

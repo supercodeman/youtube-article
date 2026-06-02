@@ -284,7 +284,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
 </html>`;
 
 interface Env {
-  GEMINI_API_KEY: string;
+  MINIMAX_API_KEY: string;
   KV_BINDING: KVNamespace;
 }
 
@@ -380,7 +380,7 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      const gemini = new GeminiService();
+      const gemini = new GeminiService(env.MINIMAX_API_KEY);
       const parserState = createParserState();
       let fullText = '';
 
@@ -459,7 +459,7 @@ async function handleChapterSummary(request: Request, env: Env): Promise<Respons
     return json(chapter.summary5w1h);
   }
 
-  const gemini = new GeminiService();
+  const gemini = new GeminiService(env.MINIMAX_API_KEY);
   const chapterContent = extractChapterContent(session.article.fullText, chapter, session.article.chapters);
   const summary = await gemini.generateSummary(
     session.article.fullText,

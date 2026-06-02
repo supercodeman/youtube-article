@@ -7,6 +7,7 @@ export interface ParserState {
   currentChapterTitle: string;
   currentChapterStart: number;
   accumulatedText: string;
+  seenChapterIndices: Set<number>;  // Track seen indices to avoid duplicates
 }
 
 export function createParserState(): ParserState {
@@ -14,7 +15,8 @@ export function createParserState(): ParserState {
     currentChapterIndex: -1,
     currentChapterTitle: '',
     currentChapterStart: 0,
-    accumulatedText: ''
+    accumulatedText: '',
+    seenChapterIndices: new Set()
   };
 }
 
@@ -31,6 +33,12 @@ export function parseChunk(
     const index = parseInt(match[1], 10) - 1; // 转为 0-based
     const title = match[2].trim();
 
+    // 检查是否重复章节
+    if (state.seenChapterIndices.has(index)) {
+      // 跳过重复的章节标记
+      return { events, text, newState: state };
+    }
+
     // 先输出累积的文本（属于上一章）
     if (state.currentChapterIndex >= 0 && state.accumulatedText) {
       events.push({
@@ -41,11 +49,12 @@ export function parseChunk(
     }
 
     // 新章节开始
+    state.seenChapterIndices.add(index);
     events.push({
       type: 'chapter',
       index,
       title,
-      startIndex: 0 // 将在累积后校准
+      startIndex: 0
     });
 
     // 更新状态
