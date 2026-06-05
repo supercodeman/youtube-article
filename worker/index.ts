@@ -574,6 +574,8 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
       const gemini = new GeminiService(env.MINIMAX_API_KEY);
       const parserState = createParserState();
       let fullText = '';
+      let rawBuffer = '';
+      let chapterCount = 0;
 
       const send = (data: SSEChunk) => {
         controller.enqueue(encoder.encode(`event: ${data.type}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -587,10 +589,12 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 
         for await (const chunk of gemini.generateStream(subtitles, session.userRequirements)) {
           if (chunk.type === 'text' && chunk.content) {
+            rawBuffer += chunk.content;
             const { events } = parseChunk(chunk.content, parserState);
 
             for (const event of events) {
               if (event.type === 'chapter') {
+                chapterCount++;
                 session.article.chapters.push({
                   index: event.index,
                   title: event.title,
@@ -603,6 +607,14 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
               }
             }
           }
+        }
+
+        // 诊断：记录 AI 是否输出了 [CHAPTER] 标记
+        if (chapterCount === 0) {
+          addLog('ERROR', 'AI 输出未包含任何 [CHAPTER] 标记，请检查 prompt 或 AI 返回');
+          addLog('INFO', `AI 原始输出前 500 字符: ${rawBuffer.slice(0, 500)}`);
+        } else {
+          addLog('INFO', `共解析出 ${chapterCount} 个章节`);
         }
 
         session.article.fullText = fullText;
