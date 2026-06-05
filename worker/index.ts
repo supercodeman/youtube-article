@@ -342,11 +342,20 @@ const HTML_CONTENT = `<!DOCTYPE html>
       eventSource.addEventListener('text', (event) => {
         const data = JSON.parse(event.data);
         const chapters = articleContent.querySelectorAll('.chapter');
-        const lastChapter = chapters[chapters.length - 1];
-        if (lastChapter) {
-          const textContent = lastChapter.querySelector('.text-content');
-          if (textContent) textContent.textContent += data.content;
+        let lastChapter = chapters[chapters.length - 1];
+
+        // 如果还没有任何章节，创建一个默认的
+        if (!lastChapter) {
+          const chapterEl = document.createElement('div');
+          chapterEl.className = 'chapter';
+          chapterEl.dataset.index = '0';
+          chapterEl.innerHTML = '<div class="chapter-header"><h2 class="chapter-title">文章内容</h2><button class="btn-small" onclick="loadSummary(0)">[5W1H]</button></div><div class="text-content"></div><div class="summary-box"></div>';
+          articleContent.appendChild(chapterEl);
+          lastChapter = chapterEl;
         }
+
+        const textContent = lastChapter.querySelector('.text-content');
+        if (textContent) textContent.textContent += data.content;
         updateProgress(70, '正在生成内容...');
       });
 
@@ -611,8 +620,8 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 
         // 诊断：记录 AI 是否输出了 [CHAPTER] 标记
         if (chapterCount === 0) {
-          addLog('ERROR', 'AI 输出未包含任何 [CHAPTER] 标记，请检查 prompt 或 AI 返回');
-          addLog('INFO', `AI 原始输出前 500 字符: ${rawBuffer.slice(0, 500)}`);
+          addLog('ERROR', 'AI 输出未包含 [CHAPTER] 标记');
+          addLog('INFO', `AI 原始输出前 300 字符: ${rawBuffer.slice(0, 300)}`);
         } else {
           addLog('INFO', `共解析出 ${chapterCount} 个章节`);
         }
