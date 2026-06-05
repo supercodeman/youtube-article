@@ -2,7 +2,7 @@ import type { Session, LogEntry, SSEChunk, GenerateRequest, ErrorResponse } from
 import { SubtitleService } from './services/subtitle';
 import { GeminiService } from './services/gemini';
 import { StorageService } from './services/storage';
-import { parseChunk, createParserState } from './utils/parser';
+import { parseChunk, createParserState, flushBuffer } from './utils/parser';
 import {
   isValidYouTubeUrl,
   isValidUUID,
@@ -622,6 +622,15 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
                 send({ type: 'text', content: event.content });
               }
             }
+          }
+        }
+
+        // 流结束时 flush 剩余 buffer
+        const { events: finalEvents } = flushBuffer(parserState);
+        for (const event of finalEvents) {
+          if (event.type === 'text') {
+            fullText += event.content;
+            send({ type: 'text', content: event.content });
           }
         }
 
