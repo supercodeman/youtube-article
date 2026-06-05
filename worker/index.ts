@@ -1,5 +1,5 @@
 import type { Session, LogEntry, SSEChunk, GenerateRequest, ErrorResponse } from './types';
-import { SubtitleService, ProxyConfig, FALLBACK_SUBTITLES } from './services/subtitle';
+import { SubtitleService } from './services/subtitle';
 import { GeminiService } from './services/gemini';
 import { StorageService } from './services/storage';
 import { parseChunk, createParserState } from './utils/parser';
@@ -407,9 +407,18 @@ const HTML_CONTENT = `<!DOCTYPE html>
 
       try {
         const res = await fetch(\`\${API_BASE}/api/chapter/\${sessionId}/\${chapterIndex}/summary\`);
-        if (!res.ok) throw new Error('加载失败');
 
-        const data = await res.json();
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error('服务器返回非 JSON 响应 (HTTP ' + res.status + ')');
+        }
+
+        if (!res.ok) {
+          throw new Error(data.message || \`HTTP \${res.status}\`);
+        }
+
         summaryBox.innerHTML = \`
           <div class="summary-item"><span class="summary-label">Who:</span> <span class="summary-who">\${escapeHtml(data.who)}</span></div>
           <div class="summary-item"><span class="summary-label">What:</span> <span class="summary-what">\${escapeHtml(data.what)}</span></div>
@@ -420,7 +429,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
         \`;
         addLog('SUCCESS', '章节 ' + (chapterIndex + 1) + ' 5W1H 总结生成完成');
       } catch (e) {
-        summaryBox.innerHTML = \`<div class="error">\${e.message}</div>\`;
+        summaryBox.innerHTML = \`<div class="error">\${escapeHtml(e.message)}</div>\`;
         addLog('ERROR', '5W1H 总结加载失败: ' + e.message);
       }
     }
@@ -443,10 +452,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
 interface Env {
   MINIMAX_API_KEY: string;
   KV_BINDING: KVNamespace;
-  PROXY_HOST?: string;
-  PROXY_PORT?: string;
-  PROXY_USERNAME?: string;
-  PROXY_PASSWORD?: string;
 }
 
 export default {
@@ -554,26 +559,14 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 
   await storage.updateStatus(sessionId, 'generating');
 
-  // Build proxy config if available
-  let proxyConfig: ProxyConfig | undefined;
-  if (env.PROXY_HOST) {
-    proxyConfig = {
-      host: env.PROXY_HOST,
-      port: parseInt(env.PROXY_PORT || '80', 10),
-      username: env.PROXY_USERNAME,
-      password: env.PROXY_PASSWORD
-    };
-    addLog('INFO', `使用代理配置: ${proxyConfig.host}:${proxyConfig.port}`);
-  }
-
-  const subtitleService = new SubtitleService(session.videoId, proxyConfig);
+  const subtitleService = new SubtitleService(session.videoId);
   addLog('INFO', '开始获取字幕...');
 
   const { subtitles, source } = await subtitleService.fetchSubtitles();
   session.subtitles = subtitles;
   session.subtitleSource = source;
 
-  addLog(source === 'api' ? 'SUCCESS' : 'INFO', `字幕获取完成 (来源: ${source}): ${subtitles.length} 字符`);
+  addLog('INFO', `字幕获取完成 (来源: ${source}): ${subtitles.length} 字符`);
 
   const stream = new ReadableStream({
     async start(controller) {

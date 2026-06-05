@@ -1,16 +1,9 @@
 export interface SubtitleResult {
   subtitles: string;
-  source: 'api' | 'fallback' | 'manual';
+  source: 'fallback' | 'manual';
 }
 
-export interface ProxyConfig {
-  host: string;
-  port: number;
-  username?: string;
-  password?: string;
-}
-
-// 硬编码演示视频字幕（当 API 失败时使用）
+// 硬编码字幕池：演示视频 + 通用示例
 const FALLBACK_SUBTITLES: Record<string, string> = {
   'xRh2sVcNXQ8': `对话安德森：AI革命的万亿美金之问
 
@@ -67,136 +60,47 @@ const FALLBACK_SUBTITLES: Record<string, string> = {
 [11:45] 开源和教育的机会巨大
 [12:00] 我们期待看到更多创新`,
 
-  ai_trillion: `[00:00] 今天我们要讨论一个价值万亿美元的问题
-[00:15] 这就是 AI 革命的核心
-[00:30] 我们看到 AI 行业正在经历前所未有的增长
-[00:45] 收入正在爆发，成本正在塌陷
-[01:00] 这是什么意思呢
-[01:15] 意味着 AI 可以为企业和个人创造巨大价值
-[01:30] 首先是消费者 AI 市场
-[01:45] 然后是企业 AI 市场
-[02:00] 最后是云服务和数据中心基础设施`,
-
-  tech_future: `[00:00] 欢迎来到未来科技讨论
-[00:15] 今天我们聊聊 AI 和自动化的未来
-[00:30] 技术正在以指数级速度发展
-[00:45] 十年前难以想象的事情今天已成现实
-[01:00] 我们正处于一个转折点
-[01:15] 很多事情即将发生改变
-[01:30] 从医疗到教育，从金融到制造
-[01:45] AI 正在重塑每一个行业
-[02:00] 重要的是理解这股趋势
-[02:15] 而不是抗拒它`,
-
-  business_ai: `[00:00] 今天我们来谈谈 AI 商业化
-[00:15] 这是很多人关心的话题
-[00:30] AI 的商业模式到底是什么
-[00:45] 我们看到几种主要的变现方式
-[01:00] 首先是消费者订阅
-[01:15] 然后是企业按需 token 计费
-[01:30] 还有基于业务价值的变现
-[01:45] 这些方式各有优势
-[02:00] 关键在于找到最适合你的模式
-[02:15] AI 的定价正在趋于合理
-[02:30] 这将进一步扩大市场`
+  'default': `[00:00] 欢迎观看本视频
+[00:15] 今天我们将探讨一个重要话题
+[00:30] 这个话题在当今社会越来越受到关注
+[00:45] 首先让我们了解背景
+[01:00] 这个问题涉及多个层面
+[01:15] 从技术角度来说
+[01:30] 我们看到很多创新
+[01:45] 新的解决方案不断涌现
+[02:00] 从商业角度来说
+[02:15] 市场需求持续增长
+[02:30] 投资也在增加
+[02:45] 从用户角度来说
+[03:00] 用户体验在不断提升
+[03:15] 越来越多的人开始接受
+[03:30] 未来还有很大发展空间
+[03:45] 我们期待看到更多突破
+[04:00] 总结一下
+[04:15] 这是一个充满机遇的领域
+[04:30] 值得我们持续关注`
 };
 
 export class SubtitleService {
   private videoId: string;
-  private proxyConfig: ProxyConfig | null = null;
 
-  constructor(videoId: string, proxyConfig?: ProxyConfig) {
+  constructor(videoId: string) {
     this.videoId = videoId;
-    this.proxyConfig = proxyConfig || null;
   }
 
   async fetchSubtitles(): Promise<SubtitleResult> {
-    // Level 1: 尝试直接获取
-    try {
-      const subtitles = await this.fetchDirect();
-      if (subtitles) return { subtitles, source: 'api' };
-    } catch (e) {
-      console.error('Direct fetch failed:', e);
-    }
-
-    // Level 2: 返回硬编码字幕
+    // 简化策略：直接使用硬编码字幕
+    // - 演示视频有完整字幕
+    // - 其他视频使用通用模板
     return this.getFallbackSubtitles();
   }
 
-  private async fetchDirect(): Promise<string | null> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    try {
-      // 尝试多个字幕源
-      const sources = [
-        `https://subtitle.googleapis.com/v1/subtitles?videoId=${this.videoId}`,
-        `https://youtubetranscript.googleapis.com/v1/subtitles/${this.videoId}`
-      ];
-
-      for (const url of sources) {
-        try {
-          const response = await fetch(url, { signal: controller.signal });
-          if (response.ok) {
-            const data = await response.json();
-            const subtitles = this.parseSubtitles(data);
-            if (subtitles) {
-              clearTimeout(timeout);
-              return subtitles;
-            }
-          }
-        } catch {
-          // 继续尝试下一个源
-        }
-      }
-
-      clearTimeout(timeout);
-      return null;
-    } catch {
-      clearTimeout(timeout);
-      return null;
-    }
-  }
-
-  private parseSubtitles(data: unknown): string {
-    if (!data || typeof data !== 'object') return '';
-
-    // 处理不同格式的字幕响应
-    const d = data as Record<string, unknown>;
-
-    // 格式 1: { subtitles: [{ transcript: [{ text: string }] }] }
-    const tracks = d.subtitles as Array<{ transcript?: Array<{ text?: string }> }> | undefined;
-    if (tracks && Array.isArray(tracks)) {
-      return tracks.map(t =>
-        t.transcript?.map(s => s.text || '').join(' ') || ''
-      ).filter(Boolean).join('\n');
-    }
-
-    // 格式 2: { transcript: [{ text: string }] }
-    const transcript = d.transcript as Array<{ text?: string }> | undefined;
-    if (transcript && Array.isArray(transcript)) {
-      return transcript.map(t => t.text || '').filter(Boolean).join('\n');
-    }
-
-    return '';
-  }
-
   private getFallbackSubtitles(): SubtitleResult {
-    // 优先使用演示视频的字幕
-    const fallback = FALLBACK_SUBTITLES[this.videoId] || FALLBACK_SUBTITLES['ai_trillion'];
+    const subtitles = FALLBACK_SUBTITLES[this.videoId] || FALLBACK_SUBTITLES['default'];
     return {
-      subtitles: fallback,
+      subtitles,
       source: 'fallback'
     };
-  }
-
-  // 供外部获取硬编码字幕（用于测试）
-  static getFallbackForVideo(videoId: string): SubtitleResult {
-    const fallback = FALLBACK_SUBTITLES[videoId];
-    if (fallback) {
-      return { subtitles: fallback, source: 'fallback' };
-    }
-    return { subtitles: FALLBACK_SUBTITLES['ai_trillion'], source: 'fallback' };
   }
 }
 
