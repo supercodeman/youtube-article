@@ -52,13 +52,15 @@ export interface GenerateResponse {
 }
 
 export interface SSEChunk {
-  type: 'chapter' | 'text' | 'done' | 'error' | 'subtitle';
+  type: 'chapter' | 'text' | 'done' | 'error' | 'subtitle' | 'log';
   index?: number;
   title?: string;
   content?: string;
   chapters?: Chapter[];
   source?: 'api' | 'fallback' | 'manual';
   charCount?: number;
+  level?: 'INFO' | 'SUCCESS' | 'ERROR';
+  message?: string;
 }
 
 export interface ErrorResponse {

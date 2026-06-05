@@ -378,6 +378,13 @@ const HTML_CONTENT = `<!DOCTYPE html>
         addLog('ERROR', '流式错误: ' + data.content);
       });
 
+      eventSource.addEventListener('log', (event) => {
+        const data = JSON.parse(event.data);
+        if (data.level && data.message) {
+          addLog(data.level, data.message);
+        }
+      });
+
       let isDone = false;
       eventSource.onerror = (e) => {
         if (isDone) return;
@@ -620,8 +627,12 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 
         // 诊断：记录 AI 是否输出了 [CHAPTER] 标记
         if (chapterCount === 0) {
+          const debugMsg = `AI 原始输出前 300 字符: ${rawBuffer.slice(0, 300)}`;
           addLog('ERROR', 'AI 输出未包含 [CHAPTER] 标记');
-          addLog('INFO', `AI 原始输出前 300 字符: ${rawBuffer.slice(0, 300)}`);
+          addLog('INFO', debugMsg);
+          // 通过 SSE 把诊断信息发到前端
+          send({ type: 'log', level: 'ERROR', message: 'AI 输出未包含 [CHAPTER] 标记' } as SSEChunk);
+          send({ type: 'log', level: 'INFO', message: debugMsg } as SSEChunk);
         } else {
           addLog('INFO', `共解析出 ${chapterCount} 个章节`);
         }
