@@ -478,6 +478,9 @@ export default {
           headers: { 'Content-Type': 'text/html; charset=utf-8' }
         });
       }
+      if (path === '/api/debug/youtube' && request.method === 'GET') {
+        return await debugYouTube();
+      }
       if (path === '/api/generate' && request.method === 'POST') {
         return await handleGenerate(request, env);
       }
@@ -707,4 +710,51 @@ async function handleDeleteSession(request: Request, env: Env): Promise<Response
   const storage = new StorageService(env.KV_BINDING);
   await storage.deleteSession(sessionId);
   return json({ success: true });
+}
+
+// 诊断端点：测试 YouTube API 在 Worker 里的实际响应
+async function debugYouTube(): Promise<Response> {
+  const tests: Record<string, unknown> = {};
+
+  // Test 1: 直接 fetch YouTube 首页
+  try {
+    const r1 = await fetch('https://www.youtube.com/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    tests.homepage = { status: r1.status, ok: r1.ok };
+  } catch (e) {
+    tests.homepage = { error: (e as Error).message };
+  }
+
+  // Test 2: InnerTube API (Android client)
+  try {
+    const r2 = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)',
+      },
+      body: JSON.stringify({
+        context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
+        videoId: 'dQw4w9WgXcQ'
+      })
+    });
+    const innerData: any = await r2.clone().json();
+    tests.innertube = {
+      status: r2.status,
+      ok: r2.ok,
+      hasCaptions: !!(innerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks)
+    };
+  } catch (e) {
+    tests.innertube = { error: (e as Error).message };
+  }
+
+  // Test 3: youtube-transcript 包
+  try {
+    const { YoutubeTranscript } = await import('youtube-transcript');
+    const items = await YoutubeTranscript.fetchTranscript('dQw4w9WgXcQ', { lang: 'zh-CN' });
+    tests.youtubeTranscript = { count: items.length, first: items[0] as unknown };
+  } catch (e) {
+    tests.youtubeTranscript = { error: (e as Error).message };
+  }
+
+  return json(tests);
 }
