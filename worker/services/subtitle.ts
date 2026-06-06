@@ -1,3 +1,4 @@
+import { YoutubeTranscript } from 'youtube-transcript';
 import type { SubtitleSource } from '../types';
 
 export interface SubtitleResult {
@@ -5,8 +6,7 @@ export interface SubtitleResult {
   source: SubtitleSource;
 }
 
-// 硬编码字幕池
-// 注意：这是演示用途的 fallback，实际应该从 YouTube 提取
+// 硬编码字幕池（仅演示视频，作为最后兜底）
 const FALLBACK_SUBTITLES: Record<string, string> = {
   'xRh2sVcNXQ8': `对话安德森：AI革命的万亿美金之问
 
@@ -64,8 +64,17 @@ const FALLBACK_SUBTITLES: Record<string, string> = {
 [12:00] 我们期待看到更多创新`
 };
 
-export function getSubtitles(videoId: string, manualSubtitles?: string): SubtitleResult {
-  // 优先使用用户手动粘贴的字幕
+/**
+ * 三级字幕获取策略：
+ * 1. 用户手动粘贴（最优先）
+ * 2. youtube-transcript 包从 YouTube 提取（实时）
+ * 3. 硬编码 fallback（仅演示视频）
+ */
+export async function getSubtitles(
+  videoId: string,
+  manualSubtitles?: string
+): Promise<SubtitleResult> {
+  // Level 1: 用户手动粘贴
   if (manualSubtitles && manualSubtitles.trim()) {
     return {
       subtitles: manualSubtitles.trim(),
@@ -73,18 +82,32 @@ export function getSubtitles(videoId: string, manualSubtitles?: string): Subtitl
     };
   }
 
-  // fallback 到硬编码字幕
-  const fallback = FALLBACK_SUBTITLES[videoId];
-  if (fallback) {
-    return {
-      subtitles: fallback,
-      source: 'fallback'
-    };
+  // Level 2: youtube-transcript 实时抓取
+  try {
+    const items = await YoutubeTranscript.fetchTranscript(videoId, {
+      lang: 'zh-CN'
+    });
+    if (items && items.length > 0) {
+      const formatted = items
+        .map(item => `[${formatTime(item.offset)}] ${item.text}`)
+        .join('\n');
+      return { subtitles: formatted, source: 'manual' }; // 来源归为 manual（实际是 API）
+    }
+  } catch (e) {
+    console.error('YouTube transcript fetch failed:', (e as Error).message);
   }
 
-  // 没有匹配时返回空
-  return {
-    subtitles: '',
-    source: 'fallback'
-  };
+  // Level 3: 硬编码 fallback
+  const fallback = FALLBACK_SUBTITLES[videoId];
+  if (fallback) {
+    return { subtitles: fallback, source: 'fallback' };
+  }
+
+  return { subtitles: '', source: 'fallback' };
+}
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `[${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}]`;
 }

@@ -518,7 +518,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
   const requirements = sanitizeRequirements(body.requirements);
   const manualSubtitles = body.manualSubtitles?.trim().slice(0, INPUT_LIMITS.manualSubtitles);
 
-  const { subtitles, source } = getSubtitles(videoId, manualSubtitles);
+  const { subtitles, source } = await getSubtitles(videoId, manualSubtitles);
 
   if (!subtitles) {
     return jsonError(
