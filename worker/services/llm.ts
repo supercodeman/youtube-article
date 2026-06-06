@@ -31,12 +31,55 @@ export class LLMService {
       throw new Error('LLM 返回空内容');
     }
 
-    const jsonMatch = text.match(/\{[\s\S]*?"who"[\s\S]*?\}/);
-    if (!jsonMatch) {
-      throw new Error(`5W1H JSON 解析失败：${text.slice(0, 100)}`);
+    // 先剥掉可能的 markdown 围栏 ```json ... ```，再找 JSON
+    const stripped = text
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/, '')
+      .trim();
+
+    // 用平衡大括号找 JSON（LLM 偶尔会在 JSON 前后加解释文字）
+    const start = stripped.indexOf('{');
+    if (start === -1) {
+      throw new Error(`5W1H JSON 解析失败（无 { 起始符）：${text.slice(0, 200)}`);
+    }
+    let depth = 0;
+    let end = -1;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < stripped.length; i++) {
+      const c = stripped[i];
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (c === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+    if (end === -1) {
+      throw new Error(`5W1H JSON 解析失败（大括号未闭合）：${text.slice(0, 200)}`);
     }
 
-    return JSON.parse(jsonMatch[0]);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripped.slice(start, end));
+    } catch (e) {
+      throw new Error(`5W1H JSON 解析失败（语法错）：${(e as Error).message} | 原始: ${text.slice(0, 200)}`);
+    }
+
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error(`5W1H JSON 解析失败（不是对象）：${text.slice(0, 200)}`);
+    }
+    const obj = parsed as Record<string, unknown>;
+    const fields = ['who', 'what', 'when', 'where', 'why', 'how'] as const;
+    for (const f of fields) {
+      if (typeof obj[f] !== 'string') {
+        throw new Error(`5W1H JSON 缺少字段 ${f}：${text.slice(0, 200)}`);
+      }
+    }
+    return obj as unknown as FiveW1H;
   }
 
   private async callChatCompletion(prompt: string, stream: boolean): Promise<Response> {
