@@ -1,7 +1,7 @@
 // ====== Domain Types ======
 
 export type SessionStatus = 'idle' | 'generating' | 'done' | 'error';
-export type SubtitleSource = 'manual' | 'fallback';
+export type SubtitleSource = 'manual' | 'youtube' | 'youtube-proxy' | 'fallback';
 
 export interface LogEntry {
   timestamp: number;

@@ -1,8 +1,10 @@
 import type { SSEChunk, FiveW1H } from '../types';
-import { AI_CONFIG } from '../config';
+import { LLM_CONFIG } from '../config';
 import { buildArticlePrompt, buildSummaryPrompt } from '../utils/prompt';
 
-export class GeminiService {
+// LLM 服务封装（OpenAI Chat Completions 兼容协议）
+// 当前实际接 MiniMax-M2.7（via api.minimax.chat 网关），切换 Gemini/其它仅需改 LLM_CONFIG。
+export class LLMService {
   constructor(private apiKey: string) {}
 
   async *generateStream(
@@ -26,26 +28,26 @@ export class GeminiService {
     const text = data.choices?.[0]?.message?.content || '';
 
     if (!text) {
-      throw new Error('Empty response from API');
+      throw new Error('LLM 返回空内容');
     }
 
     const jsonMatch = text.match(/\{[\s\S]*?"who"[\s\S]*?\}/);
     if (!jsonMatch) {
-      throw new Error(`Failed to parse 5W1H: ${text.slice(0, 100)}`);
+      throw new Error(`5W1H JSON 解析失败：${text.slice(0, 100)}`);
     }
 
     return JSON.parse(jsonMatch[0]);
   }
 
   private async callChatCompletion(prompt: string, stream: boolean): Promise<Response> {
-    return fetch(`${AI_CONFIG.baseUrl}/chat/completions`, {
+    return fetch(`${LLM_CONFIG.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`
       },
       body: JSON.stringify({
-        model: AI_CONFIG.model,
+        model: LLM_CONFIG.model,
         messages: [{ role: 'user', content: prompt }],
         stream
       })
@@ -55,7 +57,7 @@ export class GeminiService {
   private async *parseStream(response: Response): AsyncGenerator<SSEChunk, void, unknown> {
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`API error ${response.status}: ${error.slice(0, 200)}`);
+      throw new Error(`LLM HTTP ${response.status}：${error.slice(0, 200)}`);
     }
 
     const reader = response.body!.getReader();
@@ -82,7 +84,7 @@ export class GeminiService {
             yield { type: 'text', content };
           }
         } catch {
-          // 跳过无效 JSON
+          // 跳过无效 JSON（部分供应商 keep-alive 心跳）
         }
       }
     }
