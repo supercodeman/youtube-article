@@ -326,18 +326,15 @@ const HTML_CONTENT = `<!DOCTYPE html>
         let last = articleContent.querySelectorAll('.chapter');
         last = last[last.length - 1];
         if (!last) {
-          // 没有 chapter 时的 fallback
-          last = document.createElement('div');
-          last.className = 'chapter';
-          last.dataset.index = '0';
-          last.innerHTML =
-            '<div class="chapter-header"><h2 class="chapter-title">文章内容</h2>' +
-            '<button class="btn-small" onclick="loadSummary(0)">[5W1H]</button></div>' +
-            '<div class="text-content"></div><div class="summary-box"></div>';
-          articleContent.appendChild(last);
+          // 没有 chapter 时，text 直接追加到 articleContent（不分章节）
+          const intro = document.createElement('div');
+          intro.className = 'text-content';
+          intro.textContent = d.content;
+          articleContent.appendChild(intro);
+        } else {
+          const tc = last.querySelector('.text-content');
+          if (tc) tc.textContent += d.content;
         }
-        const tc = last.querySelector('.text-content');
-        if (tc) tc.textContent += d.content;
         updateProgress(70, '正在生成内容...');
       });
 
@@ -651,9 +648,11 @@ async function handleStream(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleChapterSummary(request: Request, env: Env): Promise<Response> {
+  // URL: /api/chapter/{sessionId}/{idx}/summary
+  // parts: ['', 'api', 'chapter', sessionId, idx, 'summary']
   const parts = new URL(request.url).pathname.split('/');
-  const sessionId = parts[parts.length - 2];
-  const chapterIndex = parseInt(parts[parts.length - 1], 10);
+  const sessionId = parts[parts.length - 3];
+  const chapterIndex = parseInt(parts[parts.length - 2], 10);
 
   if (!isValidUUID(sessionId) || isNaN(chapterIndex)) {
     return jsonError('Invalid parameters', 'INVALID_PARAMS');
