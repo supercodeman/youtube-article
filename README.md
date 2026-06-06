@@ -11,7 +11,7 @@
 | 需求 | 实现状态 |
 |---|---|
 | 输入 YouTube 链接生成中文文章 | ✅ |
-| 字幕硬编码兜底（演示视频稳定可用） | ✅ |
+| 字幕硬编码兜底（仅限 demo 视频 xRh2sVcNXQ8） | ✅ |
 | 主文章流式输出（实时渲染） | ✅ SSE |
 | 自然语言生成要求（影响风格/受众） | ✅ |
 | 章节组织 + [5W1H] 按钮 | ✅ |
@@ -40,7 +40,7 @@ npm run deploy     # wrangler deploy
 | `PROXY_PASSWORD` | 可选 | webshare.io 代理密码 |
 
 部署时用 `wrangler secret put VAR_NAME` 注入；本地开发用 `.dev.vars` 文件（gitignore 已忽略）。
-4 个 PROXY_* 都不配时跳过代理，降级到硬编码字幕兜底。
+4 个 PROXY_* 都不配时跳过代理，**非 demo 视频**字幕抓不到会返回错误并提示用户手动粘贴（避免用 demo 字幕糊弄非 demo 视频）。
 
 ## API 端点
 
@@ -59,16 +59,16 @@ npm run deploy     # wrangler deploy
 
 ### 1. 如何获取和处理 YouTube 字幕
 
-采用**四级降级链**，保证任何情况下都能拿到字幕喂给 LLM：
+采用**四级降级链**，但 Level 4 仅在 demo 视频上启用，避免给 LLM 喂错视频的字幕：
 
 ```
-manualSubtitles → youtube 直拉 → youtube 走 webshare 代理 → 硬编码 demo
+manualSubtitles → youtube 直拉 → youtube 走 webshare 代理 → （仅 demo 视频）硬编码 demo
 ```
 
 - **Level 1 manual**：用户手动从 YouTube 转录稿复制粘贴。最快、最准、零依赖
 - **Level 2 直拉**：Worker 出口 IP 直接 POST 到 `https://www.youtube.com/youtubei/v1/player`（Android 客户端上下文），从响应里拿 `captionTracks[i].baseUrl`，GET 这个 URL 拿字幕 XML，正则解析 `<text start="N">...</text>`
 - **Level 3 代理重试**：直拉被 YouTube 风控/验证码时启用。**Cloudflare Workers 的 `fetch()` 不支持代理**，所以走 `cloudflare:sockets` 的 `connect()` API 建 TCP socket → 发 `CONNECT www.youtube.com:443` 走 HTTP CONNECT 隧道 → `socket.startTls()` 升级 TLS → 在 socket 上手写 HTTP/1.1 请求与响应解析。webshare.io 免费账号提供 10 个 endpoint，无需信用卡
-- **Level 4 fallback**：所有路径都失败时返回硬编码 demo 字幕，**保证演示视频永远能跑通**
+- **Level 4 fallback（仅 demo 视频）**：`videoId === 'xRh2sVcNXQ8'` 才返回硬编码 demo 字幕，**保证演示视频永远能跑通**；其他视频 level 2/3 全部失败时返回 null，上层返回 `NO_SUBTITLES` 错误并提示用户手动粘贴
 
 每一级的尝试结果都写入 `session.logs`，前端日志面板可见全过程。
 
@@ -169,7 +169,7 @@ worker/
 ### 亮点
 
 1. **TCP Socket + 手写 HTTPS**：演示 Cloudflare Workers 原生 socket API 的实战用法，绕过 fetch 的代理限制
-2. **字幕 4 级降级链**：从最直接到最兜底全覆盖，**演示视频永远可用**
+2. **字幕 4 级降级链**：从最直接到最兜底全覆盖，**demo 视频永远可用，非 demo 视频严格按真实链接抓**
 3. **流式章节切分**：模型边生成边切章，前端边接收边渲染，无需等全文
 4. **5W1H 上下文感知**：整篇 + 章节双输入，避免局部理解失真
 5. **操作日志面板**：每一步状态对用户可见，部署/排障/演示都方便

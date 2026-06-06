@@ -3,12 +3,18 @@ import { fetchYouTubeSubtitles } from './youtube';
 import type { SubtitleSource, LogEntry } from '../types';
 
 // 字幕获取编排器
-// 降级链：manual → youtube 直拉 → youtube 走 webshare 代理 → 硬编码 fallback
+// 降级链：manual → youtube 直拉 → youtube 走 webshare 代理 → （仅 demo 视频）硬编码 fallback
+//
+// 关键约束：fallback 只在 videoId === DEMO_VIDEO_ID 时启用。
+// 其他视频 level 2/3 全部失败时返回 null，让上层报错让用户手动粘贴字幕——
+// 避免「输入 A 视频，喂给 LLM 的是 B 视频字幕」的灾难。
 //
 // 每一步的成败都记录到 attempts 里，由上层塞入 session.logs，方便用户在 UI 日志面板看到字幕获取过程。
 
 export interface SubtitleResult {
-  subtitles: string;
+  // 字幕抓取失败时为 null（且 attempts 里全部为 success:false），
+  // 上层据此返回 NO_SUBTITLES 错误，让用户走手动粘贴。
+  subtitles: string | null;
   source: SubtitleSource;
   attempts: SubtitleAttempt[];
 }
@@ -19,8 +25,12 @@ export interface SubtitleAttempt {
   message: string;
 }
 
+// 演示视频 ID：YouTube xRh2sVcNXQ8（AI 革命：万亿美金之问）
+// 仅该视频可走硬编码字幕兜底；其他视频字幕抓不到就失败，不能用 demo 字幕糊弄。
+const DEMO_VIDEO_ID = 'xRh2sVcNXQ8';
+
 // 演示视频字幕：YouTube xRh2sVcNXQ8（AI 革命：万亿美金之问）
-// 不可用时返回——保证演示流程永远能跑通。
+// 只在 DEMO_VIDEO_ID 走 fallback 时使用，保证演示流程永远能跑通。
 const DEMO_SUBTITLES = `[00:00] 今天我们要讨论一个价值万亿美元的问题
 [00:15] 这就是 AI 革命的核心
 [00:30] 我们看到 AI 行业正在经历前所未有的增长
@@ -138,9 +148,24 @@ export async function getSubtitles(
     });
   }
 
-  // Level 4: 硬编码演示字幕兜底（保证演示视频永远可用）
-  attempts.push({ step: 'fallback', success: true, message: '使用硬编码演示字幕兜底' });
-  return { subtitles: DEMO_SUBTITLES, source: 'fallback', attempts };
+  // Level 4: 硬编码兜底 —— 仅限演示视频
+  // 其他视频的 level 2/3 全部失败时，必须返回 null 让上层报错，
+  // 绝不能用 demo 字幕替换——那会让 LLM 生成与用户实际视频无关的文章。
+  if (videoId === DEMO_VIDEO_ID) {
+    attempts.push({
+      step: 'fallback',
+      success: true,
+      message: '使用硬编码演示字幕兜底（仅限 demo 视频）'
+    });
+    return { subtitles: DEMO_SUBTITLES, source: 'fallback', attempts };
+  } else {
+    attempts.push({
+      step: 'fallback',
+      success: false,
+      message: '非演示视频，无硬编码兜底；请手动粘贴字幕或配置 PROXY_* 走代理重试'
+    });
+    return { subtitles: null, source: 'fallback', attempts };
+  }
 }
 
 // 把 attempts 转成 LogEntry，由 index.ts 塞入 session.logs。

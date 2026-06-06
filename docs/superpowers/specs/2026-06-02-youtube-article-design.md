@@ -191,7 +191,7 @@ interface SubtitleAttempt {
 }
 ```
 
-降级链：manual → youtube-direct → youtube-proxy（env 配了才试）→ fallback。
+降级链：manual → youtube-direct → youtube-proxy（env 配了才试）→ fallback（**仅 videoId === DEMO_VIDEO_ID 时启用**，其他视频抓不到返回 null）。
 每一步的成败都进 `attempts`，由 `index.ts` 调 `attemptsToLogs(attempts, createdAt)` 转成 `LogEntry[]` 塞入 `session.logs`，UI 日志面板可见。
 
 ## 3. debug 端点重构
