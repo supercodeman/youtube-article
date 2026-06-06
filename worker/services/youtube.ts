@@ -1,4 +1,4 @@
-import { proxiedFetch, type ProxyConfig } from './proxy';
+import { proxiedFetch, proxiedFetchViaSocks5, type ProxyConfig } from './proxy';
 
 // 通过 YouTube InnerTube API + timedtext 端点拉字幕。
 // 流程：
@@ -11,6 +11,9 @@ import { proxiedFetch, type ProxyConfig } from './proxy';
 
 export interface YouTubeFetchOptions {
   proxy?: ProxyConfig | null;
+  // 代理握手协议：'http-connect'（默认）或 'socks5'
+  // webshare 等 endpoint 的实际协议类型不确定，调用方按需指定
+  proxyProtocol?: 'http-connect' | 'socks5';
 }
 
 const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
@@ -100,7 +103,8 @@ async function fetchInnerTubePlayer(
   let raw: string;
   let status: number;
   if (options.proxy) {
-    const res = await proxiedFetch({
+    const fetchViaProxy = options.proxyProtocol === 'socks5' ? proxiedFetchViaSocks5 : proxiedFetch;
+    const res = await fetchViaProxy({
       url: INNERTUBE_URL,
       method: 'POST',
       headers,
@@ -143,7 +147,8 @@ async function fetchTimedtextXml(
   let raw: string;
   let status: number;
   if (options.proxy) {
-    const res = await proxiedFetch({ url, method: 'GET', headers }, options.proxy);
+    const fetchViaProxy = options.proxyProtocol === 'socks5' ? proxiedFetchViaSocks5 : proxiedFetch;
+    const res = await fetchViaProxy({ url, method: 'GET', headers }, options.proxy);
     raw = res.body;
     status = res.status;
   } else {
