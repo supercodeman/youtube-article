@@ -64,7 +64,9 @@ const DEMO_SUBTITLES = `[00:00] 今天我们要讨论一个价值万亿美元的
  * 智能字幕获取策略：
  * 1. 有 manual → 用 manual
  * 2. 没 manual → 尝试 youtube-transcript 实时抓取
- * 3. youtube-transcript 失败 → 用演示视频字幕（兜底）
+ *    2a. 先试 zh-CN（用户首选）
+ *    2b. 失败降级到不带 lang（让 YouTube 给默认轨）
+ * 3. youtube-transcript 全部失败 → 用演示视频字幕（兜底）
  * 4. 都没有 → 返回空，让上层报错
  */
 export async function getSubtitles(
@@ -79,11 +81,22 @@ export async function getSubtitles(
     };
   }
 
-  // Level 2: youtube-transcript 实时抓取
+  // Level 2a: 优先尝试 zh-CN（用户首选）
   try {
-    const items = await YoutubeTranscript.fetchTranscript(videoId, {
-      lang: 'zh-CN'
-    });
+    const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'zh-CN' });
+    if (items && items.length > 0) {
+      const formatted = items
+        .map(item => `[${formatTime(item.offset)}] ${item.text}`)
+        .join('\n');
+      return { subtitles: formatted, source: 'manual' };
+    }
+  } catch (e) {
+    // 没中文轨，降级到 Level 2b
+  }
+
+  // Level 2b: 不带 lang，让 YouTube 给默认轨（en / auto-generated）
+  try {
+    const items = await YoutubeTranscript.fetchTranscript(videoId);
     if (items && items.length > 0) {
       const formatted = items
         .map(item => `[${formatTime(item.offset)}] ${item.text}`)
