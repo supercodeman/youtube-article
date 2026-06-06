@@ -4,6 +4,7 @@ import type { Session, LogEntry, SSEChunk, GenerateRequest, Chapter } from './ty
 import { getSubtitles, attemptsToLogs } from './services/subtitle';
 import { fetchYouTubeSubtitles } from './services/youtube';
 import { loadProxyConfig } from './services/proxy';
+import { socks5ConnectOnly } from './services/proxy-socks5';
 import { LLMService } from './services/llm';
 import { StorageService } from './services/storage';
 import { parseChunk, createParserState, flushBuffer } from './utils/parser';
@@ -371,9 +372,29 @@ async function debugYouTube(request: Request, env: Env): Promise<Response> {
         error: (e as Error).message
       };
     }
+
+    // 3c: SOCKS5 握手独立测试（不调 startTls、不发 HTTP）—— 区分
+    // "握手本身失败" 和 "握手成功但 startTls 失败（proxy 立即 EOF）"
+    try {
+      const r = await socks5ConnectOnly(proxy, 'www.youtube.com', 443);
+      tests.proxySocks5Handshake = {
+        success: true,
+        proxyHost: r.proxyHost,
+        targetHost: r.targetHost,
+        targetPort: r.targetPort,
+        message: 'SOCKS5 握手成功（CONNECT 0x00），但 startTls 失败说明 proxy 在握手后立即 EOF'
+      };
+    } catch (e) {
+      tests.proxySocks5Handshake = {
+        success: false,
+        proxyHost: `${proxy.host}:${proxy.port}`,
+        error: (e as Error).message
+      };
+    }
   } else {
     tests.proxyHttpConnect = { skipped: '未配置 PROXY_HOST/PORT/USERNAME/PASSWORD' };
     tests.proxySocks5 = { skipped: '未配置 PROXY_HOST/PORT/USERNAME/PASSWORD' };
+    tests.proxySocks5Handshake = { skipped: '未配置 PROXY_HOST/PORT/USERNAME/PASSWORD' };
   }
 
   return json(tests);

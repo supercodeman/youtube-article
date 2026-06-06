@@ -1,4 +1,5 @@
-import { proxiedFetch, proxiedFetchViaSocks5, type ProxyConfig } from './proxy';
+import { proxiedFetch, type ProxyConfig } from './proxy';
+import { proxiedFetchViaSocks5 } from './proxy-socks5';
 
 // 通过 YouTube InnerTube API + timedtext 端点拉字幕。
 // 流程：
@@ -68,7 +69,10 @@ export async function fetchYouTubeSubtitles(
   const xml = await fetchTimedtextXml(preferred.baseUrl, options);
   const text = parseTimedtextXmlToLines(xml);
   if (!text.trim()) {
-    throw new Error('字幕 XML 解析后为空');
+    // 直接看真实格式：原始 XML 前 200 字节附在错误里
+    // （用 < 转义防日志面板 XSS）
+    const preview = xml.slice(0, 200).replace(/</g, '&lt;');
+    throw new Error(`字幕 XML 解析后为空（原始前 200 字节: ${preview}）`);
   }
 
   return {
@@ -164,13 +168,19 @@ async function fetchTimedtextXml(
 }
 
 // 把 <text start="12.345" dur="2.1">内容</text> 拼成 [mm:ss] 行。
+// 注意：YouTube 字幕轨的 <text> 标签属性顺序不固定（老视频可能是 dur 在前、start 在后），
+// 所以分两步：先匹配整个 <text ...>...</text> 块，再在属性串里找 start=，不要求位置。
 // XML 实体只处理 5 个常见字符 + 数字字符引用，够覆盖 YouTube 字幕里的常见转义。
 export function parseTimedtextXmlToLines(xml: string): string {
   const lines: string[] = [];
-  const regex = /<text\s+start="([\d.]+)"(?:\s+dur="[\d.]+")?[^>]*>([\s\S]*?)<\/text>/g;
+  const blockRegex = /<text\s+([^>]*?)>([\s\S]*?)<\/text>/g;
+  const startAttrRegex = /start="([\d.]+)"/;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(xml)) !== null) {
-    const start = Number(match[1]);
+  while ((match = blockRegex.exec(xml)) !== null) {
+    const attrs = match[1];
+    const startMatch = attrs.match(startAttrRegex);
+    if (!startMatch) continue;
+    const start = Number(startMatch[1]);
     const raw = match[2];
     const text = decodeXmlEntities(raw).replace(/\s+/g, ' ').trim();
     if (text) {
