@@ -522,7 +522,7 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
 
   if (!subtitles) {
     return jsonError(
-      'No subtitles available. Please provide manual subtitles for this video.',
+      '无法获取字幕。请在「手动粘贴字幕」框中粘贴 YouTube 字幕（YouTube 视频页面 → 三个点 → 显示转录稿 → 复制文本）。演示视频请用 xRh2sVcNXQ8。',
       'NO_SUBTITLES'
     );
   }
