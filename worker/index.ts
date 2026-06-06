@@ -107,10 +107,14 @@ async function handleGenerate(request: Request, env: Env): Promise<Response> {
   const { subtitles, source, attempts } = await getSubtitles(videoId, manualSubtitles, env);
 
   if (!subtitles) {
-    return jsonError(
-      '无法获取字幕。请在「手动粘贴字幕」框中粘贴 YouTube 字幕（YouTube 视频页面 → 三个点 → 显示转录稿 → 复制文本）。演示视频请用 xRh2sVcNXQ8。',
-      'NO_SUBTITLES'
-    );
+    // 真实场景下 Cloudflare Worker 出口 IP 经常被 YouTube 风控，
+    // level 2 直拉 + level 3 代理（需配 PROXY_*）都拿不到时如实报错。
+    // 引导用户走手动粘贴 / 配置代理，不要推荐 demo 视频——那会让人误以为必须用 demo。
+    const proxyConfigured = Boolean(env.PROXY_HOST && env.PROXY_PORT && env.PROXY_USERNAME && env.PROXY_PASSWORD);
+    const message = proxyConfigured
+      ? '自动获取字幕失败，且已配置代理仍失败。请在「手动粘贴字幕」框中粘贴 YouTube 字幕（视频页面 → 三个点 → 显示转录稿 → 复制文本）。'
+      : '自动获取字幕失败：YouTube 限制了当前出口 IP。两种解决方案：① 在「手动粘贴字幕」框粘贴 YouTube 转录稿（视频页面 → 三个点 → 显示转录稿 → 复制文本）；② 注册 webshare.io 免费代理并配置 PROXY_HOST/PORT/USERNAME/PASSWORD 后重试（详见 README）。';
+    return jsonError(message, 'NO_SUBTITLES');
   }
 
   const sessionId = crypto.randomUUID();

@@ -161,12 +161,12 @@ export const HTML_CONTENT = `<!DOCTYPE html>
 
     <div class="card">
       <label for="videoUrl">YouTube 视频链接</label>
-      <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=xRh2sVcNXQ8">
-      <div class="hint">演示视频填 xRh2sVcNXQ8；其他视频请粘贴字幕</div>
+      <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=...">
+      <div class="hint">粘贴任意 YouTube 视频链接；如自动获取失败可在下方手动粘贴字幕</div>
     </div>
 
     <div class="card">
-      <label for="manualSubtitles">手动粘贴字幕（可选，留空使用演示视频）</label>
+      <label for="manualSubtitles">手动粘贴字幕（可选）</label>
       <textarea id="manualSubtitles" placeholder="[00:00] 字幕第一行&#10;[00:15] 字幕第二行&#10;..." rows="6"></textarea>
       <div class="hint">从 YouTube 复制字幕粘贴到这里（最多 5000 字符）</div>
     </div>

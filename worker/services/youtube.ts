@@ -115,7 +115,13 @@ async function fetchInnerTubePlayer(
   }
 
   if (status !== 200) {
-    throw new Error(`InnerTube HTTP ${status}：${raw.slice(0, 200)}`);
+    // 403/429 是 Cloudflare/YouTube 对当前出口 IP 风控的典型状态码，
+    // 错误信息标注出来让用户知道该去配代理 / 手动粘贴。
+    const isRiskControl = status === 403 || status === 429;
+    const detail = isRiskControl
+      ? `（可能 IP 风控，建议配置 PROXY_* 走代理重试）`
+      : '';
+    throw new Error(`InnerTube HTTP ${status}${detail}：${raw.slice(0, 200)}`);
   }
 
   try {
