@@ -1,35 +1,12 @@
+// ====== Domain Types ======
+
+export type SessionStatus = 'idle' | 'generating' | 'done' | 'error';
+export type SubtitleSource = 'manual' | 'fallback';
+
 export interface LogEntry {
   timestamp: number;
   level: 'INFO' | 'SUCCESS' | 'ERROR';
   message: string;
-}
-
-export interface Session {
-  id: string;
-  videoUrl: string;
-  videoId: string;
-  subtitles: string;
-  subtitleSource: 'api' | 'fallback' | 'manual';
-  userRequirements: string;
-  article: Article;
-  status: SessionStatus;
-  logs: LogEntry[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export type SessionStatus = 'idle' | 'generating' | 'done' | 'error';
-
-export interface Article {
-  fullText: string;
-  chapters: Chapter[];
-}
-
-export interface Chapter {
-  index: number;
-  title: string;
-  startIndex: number;
-  summary5w1h?: FiveW1H;
 }
 
 export interface FiveW1H {
@@ -41,33 +18,73 @@ export interface FiveW1H {
   how: string;
 }
 
+export interface Chapter {
+  index: number;
+  title: string;
+  startIndex: number;
+  summary5w1h?: FiveW1H;
+}
+
+export interface Article {
+  fullText: string;
+  chapters: Chapter[];
+}
+
+export interface Session {
+  id: string;
+  videoUrl: string;
+  videoId: string;
+  subtitles: string;
+  subtitleSource: SubtitleSource;
+  userRequirements: string;
+  article: Article;
+  status: SessionStatus;
+  logs: LogEntry[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ====== API Types ======
+
 export interface GenerateRequest {
   videoUrl: string;
   requirements?: string;
+  manualSubtitles?: string; // 用户手动粘贴的字幕
 }
 
 export interface GenerateResponse {
   sessionId: string;
   status: SessionStatus;
-}
-
-export interface SSEChunk {
-  type: 'chapter' | 'text' | 'done' | 'error' | 'subtitle' | 'log';
-  index?: number;
-  title?: string;
-  content?: string;
-  chapters?: Chapter[];
-  source?: 'api' | 'fallback' | 'manual';
-  charCount?: number;
-  level?: 'INFO' | 'SUCCESS' | 'ERROR';
-  message?: string;
+  subtitleSource: SubtitleSource;
 }
 
 export interface ErrorResponse {
   code: string;
   message: string;
-  fallback?: string;
 }
+
+// ====== SSE Event Types ======
+
+export type SSEEventType = 'chapter' | 'text' | 'done' | 'error' | 'subtitle' | 'log';
+
+export interface SSEChunk {
+  type: SSEEventType;
+  // chapter
+  index?: number;
+  title?: string;
+  // text
+  content?: string;
+  // done
+  chapters?: Chapter[];
+  // subtitle
+  source?: SubtitleSource;
+  charCount?: number;
+  // log
+  level?: 'INFO' | 'SUCCESS' | 'ERROR';
+  message?: string;
+}
+
+// ====== Parser Types ======
 
 export type ParserEvent =
   | { type: 'chapter'; index: number; title: string; startIndex: number }

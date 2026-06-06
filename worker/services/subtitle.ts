@@ -1,9 +1,12 @@
+import type { SubtitleSource } from '../types';
+
 export interface SubtitleResult {
   subtitles: string;
-  source: 'fallback' | 'manual';
+  source: SubtitleSource;
 }
 
-// 硬编码字幕池：演示视频 + 通用示例
+// 硬编码字幕池
+// 注意：这是演示用途的 fallback，实际应该从 YouTube 提取
 const FALLBACK_SUBTITLES: Record<string, string> = {
   'xRh2sVcNXQ8': `对话安德森：AI革命的万亿美金之问
 
@@ -58,96 +61,30 @@ const FALLBACK_SUBTITLES: Record<string, string> = {
 [11:15] AI 人才供不应求
 [11:30] 培养下一代是关键
 [11:45] 开源和教育的机会巨大
-[12:00] 我们期待看到更多创新`,
-
-  'OrmxT_46dd0': `[00:00] 欢迎来到这个视频
-[00:15] 今天我们来深入探讨 AI 革命
-[00:30] 这个话题对未来至关重要
-[00:45] 我们先看看收入增长
-[01:00] AI 公司收入爆发式增长
-[01:15] 这种增长前所未有
-[01:30] 背后是真实的需求
-[01:45] 企业愿意为 AI 付费
-[02:00] 个人用户也在订阅
-
-[02:15] 接下来看成本变化
-[02:30] GPU 成本在下降
-[02:45] 数据中心效率提升
-[03:00] 整体成本在塌陷
-[03:15] 这意味着更多创新空间
-[03:30] 创业门槛降低
-
-[03:45] 我们看几个关键领域
-[04:00] 消费者 AI 是入口
-[04:15] 用户基数大
-[04:30] 增长速度快
-[04:45] 商业模式清晰
-
-[05:00] 企业 AI 是大头
-[05:15] 客单价高
-[05:30] 续费能力强
-[05:45] 市场空间更大
-[06:00] 行业渗透在加速
-
-[06:15] 基础设施是支撑
-[06:30] 云服务需求旺盛
-[06:45] 数据中心建设加速
-[07:00] 整个产业链受益
-[07:15] 这是结构性机会
-
-[07:30] 地域分布也很重要
-[07:45] 美国领先但中国增速快
-[08:00] 欧洲在追赶
-[08:15] 全球市场都在发展
-
-[08:30] 未来十年趋势
-[08:45] AI 将无处不在
-[09:00] 每个行业都会被重塑
-[09:15] 抓住机会的人会赢
-[09:30] 我们正处在大变革的开端`,
-
-  'default': `[00:00] 欢迎观看本视频
-[00:15] 今天我们将探讨一个重要话题
-[00:30] 这个话题在当今社会越来越受到关注
-[00:45] 首先让我们了解背景
-[01:00] 这个问题涉及多个层面
-[01:15] 从技术角度来说
-[01:30] 我们看到很多创新
-[01:45] 新的解决方案不断涌现
-[02:00] 从商业角度来说
-[02:15] 市场需求持续增长
-[02:30] 投资也在增加
-[02:45] 从用户角度来说
-[03:00] 用户体验在不断提升
-[03:15] 越来越多的人开始接受
-[03:30] 未来还有很大发展空间
-[03:45] 我们期待看到更多突破
-[04:00] 总结一下
-[04:15] 这是一个充满机遇的领域
-[04:30] 值得我们持续关注`
+[12:00] 我们期待看到更多创新`
 };
 
-export class SubtitleService {
-  private videoId: string;
-
-  constructor(videoId: string) {
-    this.videoId = videoId;
-  }
-
-  async fetchSubtitles(): Promise<SubtitleResult> {
-    // 简化策略：直接使用硬编码字幕
-    // - 演示视频有完整字幕
-    // - 其他视频使用通用模板
-    return this.getFallbackSubtitles();
-  }
-
-  private getFallbackSubtitles(): SubtitleResult {
-    const subtitles = FALLBACK_SUBTITLES[this.videoId] || FALLBACK_SUBTITLES['default'];
+export function getSubtitles(videoId: string, manualSubtitles?: string): SubtitleResult {
+  // 优先使用用户手动粘贴的字幕
+  if (manualSubtitles && manualSubtitles.trim()) {
     return {
-      subtitles,
+      subtitles: manualSubtitles.trim(),
+      source: 'manual'
+    };
+  }
+
+  // fallback 到硬编码字幕
+  const fallback = FALLBACK_SUBTITLES[videoId];
+  if (fallback) {
+    return {
+      subtitles: fallback,
       source: 'fallback'
     };
   }
-}
 
-export { FALLBACK_SUBTITLES };
+  // 没有匹配时返回空
+  return {
+    subtitles: '',
+    source: 'fallback'
+  };
+}
