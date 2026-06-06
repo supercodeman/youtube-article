@@ -6,11 +6,8 @@ export interface SubtitleResult {
   source: SubtitleSource;
 }
 
-// 硬编码字幕池（仅演示视频，作为最后兜底）
-const FALLBACK_SUBTITLES: Record<string, string> = {
-  'xRh2sVcNXQ8': `对话安德森：AI革命的万亿美金之问
-
-[00:00] 今天我们要讨论一个价值万亿美元的问题
+// 演示视频字幕（作为 fallback 兜底）
+const DEMO_SUBTITLES = `[00:00] 今天我们要讨论一个价值万亿美元的问题
 [00:15] 这就是 AI 革命的核心
 [00:30] 我们看到 AI 行业正在经历前所未有的增长
 [00:45] 收入正在爆发，成本正在塌陷
@@ -61,14 +58,14 @@ const FALLBACK_SUBTITLES: Record<string, string> = {
 [11:15] AI 人才供不应求
 [11:30] 培养下一代是关键
 [11:45] 开源和教育的机会巨大
-[12:00] 我们期待看到更多创新`
-};
+[12:00] 我们期待看到更多创新`;
 
 /**
- * 三级字幕获取策略：
- * 1. 用户手动粘贴（最优先）
- * 2. youtube-transcript 包从 YouTube 提取（实时）
- * 3. 硬编码 fallback（仅演示视频）
+ * 智能字幕获取策略：
+ * 1. 有 manual → 用 manual
+ * 2. 没 manual → 尝试 youtube-transcript 实时抓取
+ * 3. youtube-transcript 失败 → 用演示视频字幕（兜底）
+ * 4. 都没有 → 返回空，让上层报错
  */
 export async function getSubtitles(
   videoId: string,
@@ -91,18 +88,18 @@ export async function getSubtitles(
       const formatted = items
         .map(item => `[${formatTime(item.offset)}] ${item.text}`)
         .join('\n');
-      return { subtitles: formatted, source: 'manual' }; // 来源归为 manual（实际是 API）
+      return { subtitles: formatted, source: 'manual' };
     }
   } catch (e) {
-    console.error('YouTube transcript fetch failed:', (e as Error).message);
+    // 静默失败：fallback 到演示视频字幕
   }
 
-  // Level 3: 硬编码 fallback
-  const fallback = FALLBACK_SUBTITLES[videoId];
-  if (fallback) {
-    return { subtitles: fallback, source: 'fallback' };
+  // Level 3: 演示视频字幕兜底
+  if (DEMO_SUBTITLES) {
+    return { subtitles: DEMO_SUBTITLES, source: 'fallback' };
   }
 
+  // Level 4: 返回空（让上层报错）
   return { subtitles: '', source: 'fallback' };
 }
 
