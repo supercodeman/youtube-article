@@ -167,25 +167,49 @@ async function fetchTimedtextXml(
   return raw;
 }
 
-// 把 <text start="12.345" dur="2.1">内容</text> 拼成 [mm:ss] 行。
-// 注意：YouTube 字幕轨的 <text> 标签属性顺序不固定（老视频可能是 dur 在前、start 在后），
-// 所以分两步：先匹配整个 <text ...>...</text> 块，再在属性串里找 start=，不要求位置。
+// 把 timedtext XML 解析成 [mm:ss] 行。
+// YouTube 字幕轨有两种格式：
+//   - format="1"（老）: <text start="秒" dur="秒">内容</text>，属性顺序不固定
+//   - format="3"（新）: <p t="毫秒" d="毫秒">内容</p>，t/d 是整数毫秒
+// 通过头部 <timedtext format="N"> 决定走哪条解析。
 // XML 实体只处理 5 个常见字符 + 数字字符引用，够覆盖 YouTube 字幕里的常见转义。
 export function parseTimedtextXmlToLines(xml: string): string {
+  // 头部没声明 format 但有 <p t= 块，按 format="3" 处理（保守）
+  if (/<p\s+[^>]*\bt="\d+"/.test(xml)) {
+    return parseFormat3(xml);
+  }
+  return parseFormat1(xml);
+}
+
+// format="1": <text start="12.345" dur="2.1">内容</text>
+// 属性顺序不固定，分两步：先匹配 <text>...</text> 块，再在属性串里找 start=
+function parseFormat1(xml: string): string {
   const lines: string[] = [];
   const blockRegex = /<text\s+([^>]*?)>([\s\S]*?)<\/text>/g;
   const startAttrRegex = /start="([\d.]+)"/;
   let match: RegExpExecArray | null;
   while ((match = blockRegex.exec(xml)) !== null) {
-    const attrs = match[1];
-    const startMatch = attrs.match(startAttrRegex);
+    const startMatch = match[1].match(startAttrRegex);
     if (!startMatch) continue;
     const start = Number(startMatch[1]);
-    const raw = match[2];
-    const text = decodeXmlEntities(raw).replace(/\s+/g, ' ').trim();
-    if (text) {
-      lines.push(`${formatTime(start)} ${text}`);
-    }
+    const text = decodeXmlEntities(match[2]).replace(/\s+/g, ' ').trim();
+    if (text) lines.push(`${formatTime(start)} ${text}`);
+  }
+  return lines.join('\n');
+}
+
+// format="3": <p t="1200" d="2160">内容</p>，t/d 是整数毫秒
+function parseFormat3(xml: string): string {
+  const lines: string[] = [];
+  const blockRegex = /<p\s+([^>]*?)>([\s\S]*?)<\/p>/g;
+  const tAttrRegex = /\bt="(\d+)"/;
+  let match: RegExpExecArray | null;
+  while ((match = blockRegex.exec(xml)) !== null) {
+    const tMatch = match[1].match(tAttrRegex);
+    if (!tMatch) continue;
+    const startSec = Number(tMatch[1]) / 1000;
+    const text = decodeXmlEntities(match[2]).replace(/\s+/g, ' ').trim();
+    if (text) lines.push(`${formatTime(startSec)} ${text}`);
   }
   return lines.join('\n');
 }
