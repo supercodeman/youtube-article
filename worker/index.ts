@@ -476,7 +476,7 @@ export default {
         });
       }
       if (path === '/api/debug/youtube' && request.method === 'GET') {
-        return await debugYouTube();
+        return await debugYouTube(request);
       }
       if (path === '/api/generate' && request.method === 'POST') {
         return await handleGenerate(request, env);
@@ -712,8 +712,10 @@ async function handleDeleteSession(request: Request, env: Env): Promise<Response
 }
 
 // 诊断端点：测试 YouTube API 在 Worker 里的实际响应
-async function debugYouTube(): Promise<Response> {
-  const tests: Record<string, unknown> = {};
+// 支持 ?videoId=xxx 查询具体视频（默认 dQw4w9WgXcQ 通道测试）
+async function debugYouTube(request: Request): Promise<Response> {
+  const videoId = new URL(request.url).searchParams.get('videoId') || 'dQw4w9WgXcQ';
+  const tests: Record<string, unknown> = { videoId };
 
   // Test 1: 直接 fetch YouTube 首页
   try {
@@ -733,26 +735,38 @@ async function debugYouTube(): Promise<Response> {
       },
       body: JSON.stringify({
         context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
-        videoId: 'dQw4w9WgXcQ'
+        videoId
       })
     });
     const innerData: any = await r2.clone().json();
+    const tracks = innerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
     tests.innertube = {
       status: r2.status,
       ok: r2.ok,
-      hasCaptions: !!(innerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks)
+      captionTrackCount: tracks?.length || 0,
+      captionLanguages: tracks?.map((t: any) => t.languageCode) || [],
+      playabilityStatus: innerData?.playabilityStatus?.status
     };
   } catch (e) {
     tests.innertube = { error: (e as Error).message };
   }
 
-  // Test 3: youtube-transcript 包
+  // Test 3: youtube-transcript 包（zh-CN 优先，不带 lang 降级）
   try {
     const { YoutubeTranscript } = await import('youtube-transcript');
-    const items = await YoutubeTranscript.fetchTranscript('dQw4w9WgXcQ', { lang: 'zh-CN' });
-    tests.youtubeTranscript = { count: items.length, first: items[0] as unknown };
+    try {
+      const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'zh-CN' });
+      tests.youtubeTranscript = { lang: 'zh-CN', count: items.length, first: items[0] as unknown };
+    } catch (e1) {
+      try {
+        const items = await YoutubeTranscript.fetchTranscript(videoId);
+        tests.youtubeTranscript = { lang: 'default', count: items.length, first: items[0] as unknown, zhCnError: (e1 as Error).message };
+      } catch (e2) {
+        tests.youtubeTranscript = { error: (e2 as Error).message, zhCnError: (e1 as Error).message };
+      }
+    }
   } catch (e) {
-    tests.youtubeTranscript = { error: (e as Error).message };
+    tests.youtubeTranscript = { importError: (e as Error).message };
   }
 
   return json(tests);
